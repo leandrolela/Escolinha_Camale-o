@@ -1,0 +1,6 @@
+{
+  "name": "Arena Camaleão",
+  "description": "Plataforma de Escolinha de Futebol, Locação de Quadra e Gestão Completa de Campeonatos (Pontos Corridos e Mata-Mata).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

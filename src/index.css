@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+
+  /* Premium Graphite Gray Palette: Sleek matte slate-gray shades */
+  --color-zinc-950: #1e2022; /* Graphite dark-gray base */
+  --color-zinc-900: #26292c; /* Contrasting lighter graphite card background */
+  --color-zinc-850: #2e3135; /* Mid-gray for nested areas/inputs */
+  --color-zinc-800: #3a3e43; /* Cool gray borders */
+  --color-zinc-700: #4b5157; /* Highlight border gray */
+  --color-zinc-600: #626972; /* Secondary gray */
+  --color-zinc-500: #808892; /* Muted gray text */
+  --color-zinc-400: #a2adb8; /* Highly legible secondary body text */
+  --color-zinc-300: #cbd5e1; /* Main body text */
+  --color-zinc-200: #e2e8f0; /* Crisp headings gray */
+  --color-zinc-100: #f8fafc; /* Brilliant white-gray for focus titles */
+}
+
+/* Ensure body starts with beautiful deep graphite gray color */
+body {
+  background-color: #1e2022;
+  color: #cbd5e1;
+}
+
+/* Custom shadow improvements for gorgeous dark layout */
+.shadow-xl {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(16, 185, 129, 0.05) !important;
+}
+
+/* Animations and custom aesthetics */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
