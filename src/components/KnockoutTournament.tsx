@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Trophy, ArrowLeft, RotateCcw, Calendar, Users, Award, ChevronRight, X, Play, ShieldAlert, ListOrdered } from 'lucide-react';
+import { Trophy, ArrowLeft, RotateCcw, Calendar, Users, Award, ChevronRight, X, Play, ShieldAlert, ListOrdered, Flame } from 'lucide-react';
 import { Tournament, Match, Team } from '../types';
 import TeamRosterManager from './TeamRosterManager';
 
@@ -36,7 +36,7 @@ export default function KnockoutTournament({
   isAdmin,
   onRequestAdmin,
 }: KnockoutTournamentProps) {
-  const [activeTab, setActiveTab] = useState<'groups' | 'bracket' | 'players'>('groups');
+  const [activeTab, setActiveTab] = useState<'groups' | 'bracket' | 'scorers' | 'players'>('groups');
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   
   // Modal score entry form state
@@ -44,6 +44,8 @@ export default function KnockoutTournament({
   const [scoreAway, setScoreAway] = useState('');
   const [penHome, setPenHome] = useState('');
   const [penAway, setPenAway] = useState('');
+  const [matchDate, setMatchDate] = useState('');
+  const [matchTime, setMatchTime] = useState('');
   const [modalError, setModalError] = useState('');
 
   // Teams lookup dictionary
@@ -51,6 +53,44 @@ export default function KnockoutTournament({
     const map: Record<string, Team> = {};
     tournament.teams.forEach(t => { map[t.id] = t; });
     return map;
+  }, [tournament.teams]);
+
+  // Calculate top scorers list in real time
+  const scorersList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      name: string;
+      teamId: string;
+      teamName: string;
+      teamColor: string;
+      goals: number;
+      yellowCards: number;
+      doubleYellows: number;
+      redCards: number;
+    }> = [];
+
+    tournament.teams.forEach((team) => {
+      (team.players || []).forEach((player) => {
+        list.push({
+          id: player.id,
+          name: player.name,
+          teamId: team.id,
+          teamName: team.name,
+          teamColor: team.color,
+          goals: player.goals || 0,
+          yellowCards: player.yellowCards || 0,
+          doubleYellows: player.doubleYellows || 0,
+          redCards: player.redCards || 0,
+        });
+      });
+    });
+
+    // Sort by goals descending, then by fewer red cards, then by fewer yellow cards
+    return list.sort((a, b) => {
+      if (b.goals !== a.goals) return b.goals - a.goals;
+      if (b.redCards !== a.redCards) return a.redCards - b.redCards;
+      return a.yellowCards - b.yellowCards;
+    });
   }, [tournament.teams]);
 
   // Split teams into Group A and Group B
@@ -240,64 +280,80 @@ export default function KnockoutTournament({
     return false;
   };
 
-  // Open score entry modal
+  // Open score entry / view modal
   const handleOpenMatchModal = (match: Match) => {
     if (!isMatchPlayable(match)) return;
 
-    onRequestAdmin(() => {
-      setSelectedMatch(match);
-      setScoreHome(match.homeScore !== null ? String(match.homeScore) : '');
-      setScoreAway(match.awayScore !== null ? String(match.awayScore) : '');
-      setPenHome(match.penaltiesHome !== null ? String(match.penaltiesHome) : '');
-      setPenAway(match.penaltiesAway !== null ? String(match.penaltiesAway) : '');
-      setModalError('');
-    });
+    setSelectedMatch(match);
+    setScoreHome(match.homeScore !== null ? String(match.homeScore) : '');
+    setScoreAway(match.awayScore !== null ? String(match.awayScore) : '');
+    setPenHome(match.penaltiesHome !== null ? String(match.penaltiesHome) : '');
+    setPenAway(match.penaltiesAway !== null ? String(match.penaltiesAway) : '');
+    setMatchDate(match.date || '');
+    setMatchTime(match.time || '');
+    setModalError('');
   };
 
   // Close score entry modal
   const handleCloseModal = () => {
     setSelectedMatch(null);
+    setScoreHome('');
+    setScoreAway('');
+    setPenHome('');
+    setPenAway('');
+    setMatchDate('');
+    setMatchTime('');
     setModalError('');
   };
 
-  // Save the match score
+  // Save the match score or schedule
   const handleSaveScore = () => {
     if (!selectedMatch) return;
     setModalError('');
 
-    if (scoreHome === '' || scoreAway === '') {
-      setModalError('Por favor, informe o placar de ambos os times!');
-      return;
-    }
-
-    const sHome = parseInt(scoreHome);
-    const sAway = parseInt(scoreAway);
-
+    let sHome: number | null = null;
+    let sAway: number | null = null;
     let pHome: number | null = null;
     let pAway: number | null = null;
     let winnerTeamId = '';
+    let played = selectedMatch.played;
 
-    const isKnockoutMatch = selectedMatch.phase === 'semifinal' || selectedMatch.phase === 'final';
+    // If either score is entered, we require both
+    if (scoreHome !== '' || scoreAway !== '') {
+      if (scoreHome === '' || scoreAway === '') {
+        setModalError('Por favor, informe o placar de ambos os times para registrar o resultado!');
+        return;
+      }
 
-    if (sHome === sAway) {
-      if (isKnockoutMatch) {
-        if (penHome === '' || penAway === '') {
-          setModalError('Partidas eliminatórias não podem terminar empatadas! Informe o resultado da decisão por pênaltis.');
-          return;
+      sHome = parseInt(scoreHome);
+      sAway = parseInt(scoreAway);
+      played = true;
+
+      const isKnockoutMatch = selectedMatch.phase === 'semifinal' || selectedMatch.phase === 'final';
+
+      if (sHome === sAway) {
+        if (isKnockoutMatch) {
+          if (penHome === '' || penAway === '') {
+            setModalError('Partidas eliminatórias não podem terminar empatadas! Informe o resultado da decisão por pênaltis.');
+            return;
+          }
+
+          pHome = parseInt(penHome);
+          pAway = parseInt(penAway);
+
+          if (pHome === pAway) {
+            setModalError('A decisão por pênaltis precisa ter um vencedor! Os gols não podem ser iguais.');
+            return;
+          }
+
+          winnerTeamId = pHome > pAway ? selectedMatch.homeTeamId : selectedMatch.awayTeamId;
         }
-
-        pHome = parseInt(penHome);
-        pAway = parseInt(penAway);
-
-        if (pHome === pAway) {
-          setModalError('A decisão por pênaltis precisa ter um vencedor! Os gols não podem ser iguais.');
-          return;
-        }
-
-        winnerTeamId = pHome > pAway ? selectedMatch.homeTeamId : selectedMatch.awayTeamId;
+      } else {
+        winnerTeamId = sHome > sAway ? selectedMatch.homeTeamId : selectedMatch.awayTeamId;
       }
     } else {
-      winnerTeamId = sHome > sAway ? selectedMatch.homeTeamId : selectedMatch.awayTeamId;
+      // If no score is typed, but game was previously played, and they cleared scores:
+      played = false;
     }
 
     // Update matches in state
@@ -311,7 +367,9 @@ export default function KnockoutTournament({
           awayScore: sAway,
           penaltiesHome: pHome,
           penaltiesAway: pAway,
-          played: true
+          played,
+          date: matchDate || undefined,
+          time: matchTime || undefined
         };
       }
       return m;
@@ -319,8 +377,8 @@ export default function KnockoutTournament({
 
     onUpdateMatches(updatedMatches);
 
-    // If it was the final match, complete tournament
-    if (selectedMatch.phase === 'final') {
+    // If it was the final match and was played, complete tournament
+    if (selectedMatch.phase === 'final' && played) {
       onUpdateStatus('completed', winnerTeamId);
     } else {
       onUpdateStatus('active', null);
@@ -482,19 +540,28 @@ export default function KnockoutTournament({
           <Award className="w-4.5 h-4.5" />
           <span>Fase Final (Mata-Mata)</span>
         </button>
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('players')}
-            className={`px-5 py-3 text-sm font-bold tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all shrink-0 ${
-              activeTab === 'players'
-                ? 'text-emerald-400 border-emerald-400 bg-emerald-500/5'
-                : 'text-zinc-400 border-transparent hover:text-white'
-            }`}
-          >
-            <Users className="w-4.5 h-4.5" />
-            <span>Gerenciar Elencos</span>
-          </button>
-        )}
+        <button
+          onClick={() => setActiveTab('scorers')}
+          className={`px-5 py-3 text-sm font-bold tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all shrink-0 ${
+            activeTab === 'scorers'
+              ? 'text-emerald-400 border-emerald-400 bg-emerald-500/5'
+              : 'text-zinc-400 border-transparent hover:text-white'
+          }`}
+        >
+          <Flame className="w-4.5 h-4.5 text-orange-400" />
+          <span>Artilharia</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('players')}
+          className={`px-5 py-3 text-sm font-bold tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all shrink-0 ${
+            activeTab === 'players'
+              ? 'text-emerald-400 border-emerald-400 bg-emerald-500/5'
+              : 'text-zinc-400 border-transparent hover:text-white'
+          }`}
+        >
+          <Users className="w-4.5 h-4.5" />
+          <span>Jogadores / Elencos</span>
+        </button>
       </div>
 
       {/* TAB CONTENTS */}
@@ -678,6 +745,11 @@ export default function KnockoutTournament({
                       </span>
                       {match.played ? (
                         <span className="text-emerald-400">Finalizado</span>
+                      ) : match.date ? (
+                        <span className="text-emerald-400 flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-emerald-400" />
+                          {match.date.split('-').reverse().join('/')} {match.time || ''}
+                        </span>
                       ) : (
                         <span className="text-zinc-600">Agendado</span>
                       )}
@@ -799,6 +871,11 @@ export default function KnockoutTournament({
                           <span>Semifinal {idx + 1}</span>
                           {match.played ? (
                             <span className="text-emerald-400">Finalizado</span>
+                          ) : match.date ? (
+                            <span className="text-emerald-400 flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-emerald-400" />
+                              {match.date.split('-').reverse().join('/')} {match.time || ''}
+                            </span>
                           ) : isPlayable ? (
                             <span className="text-zinc-400">Liberado</span>
                           ) : (
@@ -897,6 +974,11 @@ export default function KnockoutTournament({
                         </span>
                         {finalMatch.played ? (
                           <span className="text-amber-400">Campeão Definido</span>
+                        ) : finalMatch.date ? (
+                          <span className="text-amber-400 flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-amber-400" />
+                            {finalMatch.date.split('-').reverse().join('/')} {finalMatch.time || ''}
+                          </span>
                         ) : isPlayable ? (
                           <span className="text-amber-500">Liberado</span>
                         ) : (
@@ -962,7 +1044,172 @@ export default function KnockoutTournament({
         </div>
       )}
 
-      {activeTab === 'players' && isAdmin && (
+      {/* TAB 3: TOP SCORERS */}
+      {activeTab === 'scorers' && (
+        <div className="space-y-6 max-w-4xl mx-auto">
+          {scorersList.length === 0 || scorersList.every(s => s.goals === 0) ? (
+            <div className="text-center py-16 px-4 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-xl">
+              <div className="w-16 h-16 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mx-auto mb-4 animate-bounce">
+                <Flame className="w-8 h-8 text-orange-400" />
+              </div>
+              <h3 className="text-lg font-black text-white uppercase tracking-wider">A artilharia ainda não começou!</h3>
+              <p className="text-sm text-zinc-400 mt-2 max-w-md mx-auto">
+                Nenhum atleta balançou as redes adversárias ainda neste campeonato.
+              </p>
+              <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+                Administradores podem lançar os gols dos atletas na aba de <strong>Jogadores / Elencos</strong> selecionando a equipe correspondente.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* PODIUM OF TOP 3 SCORERS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end pt-6">
+                {/* 2nd Place */}
+                {scorersList[1] && scorersList[1].goals > 0 ? (
+                  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col items-center text-center relative order-2 md:order-1 hover:border-zinc-700/50 transition-all">
+                    <div className="absolute top-4 left-4 text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-750">
+                      2º Lugar
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-400 flex items-center justify-center font-bold text-lg text-zinc-300 shadow-inner mb-3 mt-4">
+                      🥈
+                    </div>
+                    <h4 className="font-black text-white text-base truncate max-w-full" title={scorersList[1].name}>
+                      {scorersList[1].name}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${scorersList[1].teamColor}`} />
+                      <span className="text-xs text-zinc-400 font-bold">{scorersList[1].teamName}</span>
+                    </div>
+                    <div className="mt-4 bg-zinc-850 px-4 py-2 rounded-xl border border-zinc-800">
+                      <span className="text-2xl font-black text-zinc-300 font-mono">{scorersList[1].goals}</span>
+                      <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider ml-1">Gols</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-zinc-900/40 border border-dashed border-zinc-850 p-5 rounded-2xl h-44 flex items-center justify-center text-zinc-600 font-mono text-xs uppercase order-2 md:order-1">
+                    Vago
+                  </div>
+                )}
+
+                {/* 1st Place */}
+                {scorersList[0] && scorersList[0].goals > 0 ? (
+                  <div className="bg-gradient-to-b from-amber-500/10 to-zinc-900 border-2 border-amber-500/30 p-6 rounded-3xl flex flex-col items-center text-center relative order-1 md:order-2 shadow-xl hover:border-amber-500/50 transition-all transform md:-translate-y-2">
+                    <div className="absolute top-4 text-amber-400 text-[10px] font-mono font-bold uppercase tracking-widest bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30 animate-pulse">
+                      Artilheiro
+                    </div>
+                    <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center font-bold text-2xl text-amber-300 shadow-lg mb-3 mt-5">
+                      👑
+                    </div>
+                    <h4 className="font-black text-white text-lg truncate max-w-full" title={scorersList[0].name}>
+                      {scorersList[0].name}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${scorersList[0].teamColor}`} />
+                      <span className="text-xs text-amber-300 font-black">{scorersList[0].teamName}</span>
+                    </div>
+                    <div className="mt-4 bg-amber-500/10 px-6 py-2.5 rounded-xl border border-amber-500/20 shadow-md">
+                      <span className="text-3xl font-black text-amber-400 font-mono">{scorersList[0].goals}</span>
+                      <span className="text-xs text-amber-300/80 font-mono uppercase tracking-wider ml-1">Gols</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* 3rd Place */}
+                {scorersList[2] && scorersList[2].goals > 0 ? (
+                  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col items-center text-center relative order-3 hover:border-zinc-700/50 transition-all">
+                    <div className="absolute top-4 left-4 text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-750">
+                      3º Lugar
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-amber-600/50 flex items-center justify-center font-bold text-lg text-amber-600 shadow-inner mb-3 mt-4">
+                      🥉
+                    </div>
+                    <h4 className="font-black text-white text-base truncate max-w-full" title={scorersList[2].name}>
+                      {scorersList[2].name}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${scorersList[2].teamColor}`} />
+                      <span className="text-xs text-zinc-400 font-bold">{scorersList[2].teamName}</span>
+                    </div>
+                    <div className="mt-4 bg-zinc-850 px-4 py-2 rounded-xl border border-zinc-800">
+                      <span className="text-2xl font-black text-amber-600/90 font-mono">{scorersList[2].goals}</span>
+                      <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider ml-1">Gols</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-zinc-900/40 border border-dashed border-zinc-850 p-5 rounded-2xl h-44 flex items-center justify-center text-zinc-600 font-mono text-xs uppercase order-3">
+                    Vago
+                  </div>
+                )}
+              </div>
+
+              {/* COMPLETE STANDINGS TABLE */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-lg">
+                <div className="px-5 py-4 bg-zinc-950 border-b border-zinc-850 flex items-center gap-2">
+                  <Flame className="w-4.5 h-4.5 text-orange-400" />
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-zinc-400">Classificação Geral de Artilharia</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[500px]">
+                    <thead>
+                      <tr className="bg-zinc-950/60 text-[10px] font-mono tracking-wider text-zinc-500 uppercase border-b border-zinc-850">
+                        <th className="py-3 px-5 text-center w-16">Pos</th>
+                        <th className="py-3 px-4">Jogador</th>
+                        <th className="py-3 px-4">Equipe</th>
+                        <th className="py-3 px-4 text-center w-24">Cartões (Am/Vm)</th>
+                        <th className="py-3 px-6 text-right w-32">Gols Registrados</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-850 text-sm">
+                      {scorersList.filter(p => p.goals > 0).map((player, index) => {
+                        let rankBadge = `${index + 1}º`;
+                        if (index === 0) rankBadge = '👑 1º';
+                        else if (index === 1) rankBadge = '🥈 2º';
+                        else if (index === 2) rankBadge = '🥉 3º';
+
+                        return (
+                          <tr key={player.id} className="hover:bg-zinc-850/20 transition-colors">
+                            <td className="py-3 px-5 text-center font-mono font-bold text-zinc-400">
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${index < 3 ? 'text-amber-400 font-black' : 'text-zinc-500'}`}>
+                                {rankBadge}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-bold text-white">
+                              {player.name}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className={`w-3 h-3 rounded-full ${player.teamColor}`} />
+                                <span className="text-zinc-300 font-medium">{player.teamName}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-mono text-xs">
+                                <span className="text-yellow-400 font-bold bg-yellow-400/5 border border-yellow-400/10 px-1 py-0.5 rounded">
+                                  {player.yellowCards + player.doubleYellows * 2}🟨
+                                </span>
+                                <span className="text-red-500 font-bold bg-red-500/5 border border-red-500/10 px-1 py-0.5 rounded">
+                                  {player.redCards + player.doubleYellows}🟥
+                                </span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-6 text-right">
+                              <span className="text-lg font-black text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl shadow-inner">
+                                {player.goals} Gols
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'players' && (
         <TeamRosterManager
           tournament={tournament}
           isAdmin={isAdmin}
@@ -980,9 +1227,11 @@ export default function KnockoutTournament({
             <div className="px-5 py-4 bg-zinc-950 border-b border-zinc-800 flex justify-between items-center">
               <div>
                 <span className="text-[10px] font-mono tracking-widest text-emerald-400 uppercase font-bold">
-                  {selectedMatch.phase === 'final' ? 'DECISÃO DO TÍTULO 🏆' : 'ATUALIZAR CONFRONTO ⚔️'}
+                  {selectedMatch.phase === 'final' ? 'DECISÃO DO TÍTULO 🏆' : 'DETALHES DO CONFRONTO ⚔️'}
                 </span>
-                <h3 className="text-lg font-bold text-white uppercase -mt-0.5">Lançar Resultado</h3>
+                <h3 className="text-lg font-bold text-white uppercase -mt-0.5">
+                  {isAdmin ? 'Lançar Resultado / Agendar' : 'Resultado da Partida'}
+                </h3>
               </div>
               <button
                 onClick={handleCloseModal}
@@ -1000,6 +1249,40 @@ export default function KnockoutTournament({
                 </div>
               )}
 
+              {/* DATE & TIME CALENDAR BLOCK */}
+              <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
+                  <Calendar className="w-4 h-4 text-emerald-400" />
+                  <span>Calendário de Jogos (Agenda)</span>
+                </div>
+                {isAdmin ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-zinc-500 font-bold block mb-1">DATA DO JOGO</label>
+                      <input
+                        type="date"
+                        value={matchDate}
+                        onChange={(e) => setMatchDate(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-zinc-500 font-bold block mb-1">HORÁRIO</label>
+                      <input
+                        type="time"
+                        value={matchTime}
+                        onChange={(e) => setMatchTime(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs font-semibold text-zinc-300 bg-zinc-900 px-3 py-2.5 rounded-lg border border-zinc-800/40">
+                    {matchDate ? `${matchDate.split('-').reverse().join('/')} às ${matchTime || 'Sem horário definido'}` : 'Partida ainda sem data agendada'}
+                  </div>
+                )}
+              </div>
+
               {/* Match Score Fields */}
               <div className="grid grid-cols-12 gap-3 items-center">
                 
@@ -1009,13 +1292,19 @@ export default function KnockoutTournament({
                     H
                   </div>
                   <strong className="text-sm font-bold block truncate mb-1">{getTeamName(selectedMatch.homeTeamId)}</strong>
-                  <input
-                    type="text"
-                    placeholder="-"
-                    value={scoreHome}
-                    onChange={(e) => setScoreHome(e.target.value.replace(/\D/g, ''))}
-                    className="w-16 h-12 text-center bg-zinc-950 border border-zinc-800 rounded-xl font-black text-xl text-white focus:outline-none focus:border-emerald-500"
-                  />
+                  {isAdmin ? (
+                    <input
+                      type="text"
+                      placeholder="-"
+                      value={scoreHome}
+                      onChange={(e) => setScoreHome(e.target.value.replace(/\D/g, ''))}
+                      className="w-16 h-12 text-center bg-zinc-950 border border-zinc-800 rounded-xl font-black text-xl text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  ) : (
+                    <div className="w-16 h-12 flex items-center justify-center bg-zinc-950 border border-zinc-850 rounded-xl font-black text-xl text-white mx-auto">
+                      {selectedMatch.homeScore !== null ? selectedMatch.homeScore : '-'}
+                    </div>
+                  )}
                 </div>
 
                 {/* X separator */}
@@ -1029,48 +1318,67 @@ export default function KnockoutTournament({
                     A
                   </div>
                   <strong className="text-sm font-bold block truncate mb-1">{getTeamName(selectedMatch.awayTeamId)}</strong>
-                  <input
-                    type="text"
-                    placeholder="-"
-                    value={scoreAway}
-                    onChange={(e) => setScoreAway(e.target.value.replace(/\D/g, ''))}
-                    className="w-16 h-12 text-center bg-zinc-950 border border-zinc-800 rounded-xl font-black text-xl text-white focus:outline-none focus:border-emerald-500"
-                  />
+                  {isAdmin ? (
+                    <input
+                      type="text"
+                      placeholder="-"
+                      value={scoreAway}
+                      onChange={(e) => setScoreAway(e.target.value.replace(/\D/g, ''))}
+                      className="w-16 h-12 text-center bg-zinc-950 border border-zinc-800 rounded-xl font-black text-xl text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  ) : (
+                    <div className="w-16 h-12 flex items-center justify-center bg-zinc-950 border border-zinc-850 rounded-xl font-black text-xl text-white mx-auto">
+                      {selectedMatch.awayScore !== null ? selectedMatch.awayScore : '-'}
+                    </div>
+                  )}
                 </div>
 
               </div>
 
               {/* PENALTIES BLOCK (IF DRAW AND ELIMINATORY) */}
-              {scoreHome !== '' && scoreAway !== '' && scoreHome === scoreAway && (selectedMatch.phase === 'semifinal' || selectedMatch.phase === 'final') && (
+              {((isAdmin && scoreHome !== '' && scoreAway !== '' && scoreHome === scoreAway) || (!isAdmin && selectedMatch.played && selectedMatch.homeScore === selectedMatch.awayScore)) && 
+               (selectedMatch.phase === 'semifinal' || selectedMatch.phase === 'final') && (
                 <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3 animate-fade-in">
                   <div className="text-center">
                     <span className="text-[10px] font-mono tracking-wider text-amber-500 font-bold uppercase">DECISÃO NOS PÊNALTIS</span>
-                    <p className="text-zinc-500 text-[10px] -mt-0.5">Empate regulamentar! Insira a contagem de pênaltis convertidos.</p>
+                    <p className="text-zinc-500 text-[10px] -mt-0.5">Empate regulamentar! Decisão por pênaltis convertidos.</p>
                   </div>
 
                   <div className="flex items-center justify-center gap-4">
                     <div className="flex flex-col items-center">
                       <span className="text-[10px] text-zinc-500 mb-1">Gols</span>
-                      <input
-                        type="text"
-                        placeholder="0"
-                        value={penHome}
-                        onChange={(e) => setPenHome(e.target.value.replace(/\D/g, ''))}
-                        className="w-12 h-10 text-center bg-zinc-900 border border-zinc-800 rounded-lg text-amber-400 font-black focus:outline-none focus:border-amber-500"
-                      />
+                      {isAdmin ? (
+                        <input
+                          type="text"
+                          placeholder="0"
+                          value={penHome}
+                          onChange={(e) => setPenHome(e.target.value.replace(/\D/g, ''))}
+                          className="w-12 h-10 text-center bg-zinc-900 border border-zinc-800 rounded-lg text-amber-400 font-black focus:outline-none focus:border-amber-500"
+                        />
+                      ) : (
+                        <div className="w-12 h-10 flex items-center justify-center bg-zinc-900 border border-zinc-850 rounded-lg text-amber-400 font-black">
+                          {selectedMatch.penaltiesHome ?? 0}
+                        </div>
+                      )}
                     </div>
                     
                     <span className="text-zinc-700 font-mono text-xs mt-4">x</span>
 
                     <div className="flex flex-col items-center">
                       <span className="text-[10px] text-zinc-500 mb-1">Gols</span>
-                      <input
-                        type="text"
-                        placeholder="0"
-                        value={penAway}
-                        onChange={(e) => setPenAway(e.target.value.replace(/\D/g, ''))}
-                        className="w-12 h-10 text-center bg-zinc-900 border border-zinc-800 rounded-lg text-amber-400 font-black focus:outline-none focus:border-amber-500"
-                      />
+                      {isAdmin ? (
+                        <input
+                          type="text"
+                          placeholder="0"
+                          value={penAway}
+                          onChange={(e) => setPenAway(e.target.value.replace(/\D/g, ''))}
+                          className="w-12 h-10 text-center bg-zinc-900 border border-zinc-800 rounded-lg text-amber-400 font-black focus:outline-none focus:border-amber-500"
+                        />
+                      ) : (
+                        <div className="w-12 h-10 flex items-center justify-center bg-zinc-900 border border-zinc-850 rounded-lg text-amber-400 font-black">
+                          {selectedMatch.penaltiesAway ?? 0}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1084,15 +1392,17 @@ export default function KnockoutTournament({
                 onClick={handleCloseModal}
                 className="px-4 py-2 bg-zinc-900 text-xs text-zinc-400 font-bold hover:text-white rounded-lg transition-colors"
               >
-                Voltar
+                {isAdmin ? 'Voltar' : 'Fechar'}
               </button>
-              <button
-                type="button"
-                onClick={handleSaveScore}
-                className="px-5 py-2 bg-emerald-500 text-xs text-zinc-950 font-extrabold rounded-lg hover:bg-emerald-400 transition-all flex items-center gap-1.5"
-              >
-                <span>Confirmar Resultado</span>
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleSaveScore}
+                  className="px-5 py-2 bg-emerald-500 text-xs text-zinc-950 font-extrabold rounded-lg hover:bg-emerald-400 transition-all flex items-center gap-1.5"
+                >
+                  <span>Confirmar Resultado</span>
+                </button>
+              )}
             </div>
 
           </div>

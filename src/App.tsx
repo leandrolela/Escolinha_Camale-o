@@ -105,30 +105,44 @@ export default function App() {
 
   // Update match scores within a tournament
   const handleUpdateMatches = (tournamentId: string, updatedMatches: Match[]) => {
-    const updated = tournaments.map((t) => {
-      if (t.id === tournamentId) {
-        return {
-          ...t,
-          matches: updatedMatches,
-        };
+    setTournaments((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === tournamentId) {
+          return {
+            ...t,
+            matches: updatedMatches,
+          };
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('camaleao_tournaments', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Error saving tournaments to localStorage:', e);
       }
-      return t;
+      return updated;
     });
-    saveTournaments(updated);
   };
 
   // Update teams list inside a tournament
   const handleUpdateTeams = (tournamentId: string, updatedTeams: Team[]) => {
-    const updated = tournaments.map((t) => {
-      if (t.id === tournamentId) {
-        return {
-          ...t,
-          teams: updatedTeams,
-        };
+    setTournaments((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === tournamentId) {
+          return {
+            ...t,
+            teams: updatedTeams,
+          };
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('camaleao_tournaments', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Error saving tournaments to localStorage:', e);
       }
-      return t;
+      return updated;
     });
-    saveTournaments(updated);
   };
 
   // Update overall tournament status and winner ID (e.g. when completed)
@@ -137,17 +151,24 @@ export default function App() {
     status: 'active' | 'completed', 
     winnerId: string | null
   ) => {
-    const updated = tournaments.map((t) => {
-      if (t.id === tournamentId) {
-        return {
-          ...t,
-          status,
-          winnerId,
-        };
+    setTournaments((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === tournamentId) {
+          return {
+            ...t,
+            status,
+            winnerId,
+          };
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('camaleao_tournaments', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Error saving tournaments to localStorage:', e);
       }
-      return t;
+      return updated;
     });
-    saveTournaments(updated);
   };
 
   // Import external backup

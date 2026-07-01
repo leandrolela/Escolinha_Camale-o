@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Save, Trash2, ArrowLeft, Trophy, Award, BarChart3, RotateCcw, Sparkles, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, Trash2, ArrowLeft, Trophy, Award, BarChart3, RotateCcw, Sparkles, Users, Calendar, Flame } from 'lucide-react';
 import { Tournament, Match, Team, TeamStats } from '../types';
 import TeamRosterManager from './TeamRosterManager';
 
@@ -22,7 +22,7 @@ export default function LeagueTournament({
   isAdmin,
   onRequestAdmin,
 }: LeagueTournamentProps) {
-  const [activeTab, setActiveTab] = useState<'standings' | 'matches' | 'stats' | 'players'>('standings');
+  const [activeTab, setActiveTab] = useState<'standings' | 'matches' | 'stats' | 'scorers' | 'players'>('standings');
   const [selectedRound, setSelectedRound] = useState(1);
   const [editingScores, setEditingScores] = useState<Record<string, { home: string; away: string }>>({});
 
@@ -39,6 +39,44 @@ export default function LeagueTournament({
       map[team.id] = team;
     });
     return map;
+  }, [tournament.teams]);
+
+  // Calculate top scorers list in real time
+  const scorersList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      name: string;
+      teamId: string;
+      teamName: string;
+      teamColor: string;
+      goals: number;
+      yellowCards: number;
+      doubleYellows: number;
+      redCards: number;
+    }> = [];
+
+    tournament.teams.forEach((team) => {
+      (team.players || []).forEach((player) => {
+        list.push({
+          id: player.id,
+          name: player.name,
+          teamId: team.id,
+          teamName: team.name,
+          teamColor: team.color,
+          goals: player.goals || 0,
+          yellowCards: player.yellowCards || 0,
+          doubleYellows: player.doubleYellows || 0,
+          redCards: player.redCards || 0,
+        });
+      });
+    });
+
+    // Sort by goals descending, then by fewer red cards, then by fewer yellow cards
+    return list.sort((a, b) => {
+      if (b.goals !== a.goals) return b.goals - a.goals;
+      if (b.redCards !== a.redCards) return a.redCards - b.redCards;
+      return a.yellowCards - b.yellowCards;
+    });
   }, [tournament.teams]);
 
   // Calculate standings table in real time
@@ -228,6 +266,42 @@ export default function LeagueTournament({
         onUpdateStatus('active', null);
       }
     });
+  };
+
+  // Update match date
+  const handleMatchDateChange = (matchId: string, date: string) => {
+    onRequestAdmin(() => {
+      const updated = tournament.matches.map(m => {
+        if (m.id === matchId) {
+          return { ...m, date };
+        }
+        return m;
+      });
+      onUpdateMatches(updated);
+    });
+  };
+
+  // Update match time
+  const handleMatchTimeChange = (matchId: string, time: string) => {
+    onRequestAdmin(() => {
+      const updated = tournament.matches.map(m => {
+        if (m.id === matchId) {
+          return { ...m, time };
+        }
+        return m;
+      });
+      onUpdateMatches(updated);
+    });
+  };
+
+  // Format date helper (e.g. "YYYY-MM-DD" -> "DD/MM/YYYY")
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
   };
 
   // Reset all matches back to unplayed
@@ -420,19 +494,28 @@ export default function LeagueTournament({
           <BarChart3 className="w-4.5 h-4.5" />
           <span>Destaques</span>
         </button>
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('players')}
-            className={`px-5 py-3 text-sm font-bold tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === 'players'
-                ? 'text-emerald-400 border-emerald-400 bg-emerald-500/5'
-                : 'text-zinc-400 border-transparent hover:text-white'
-            }`}
-          >
-            <Users className="w-4.5 h-4.5" />
-            <span>Jogadores / Elencos</span>
-          </button>
-        )}
+        <button
+          onClick={() => setActiveTab('scorers')}
+          className={`px-5 py-3 text-sm font-bold tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all ${
+            activeTab === 'scorers'
+              ? 'text-emerald-400 border-emerald-400 bg-emerald-500/5'
+              : 'text-zinc-400 border-transparent hover:text-white'
+          }`}
+        >
+          <Flame className="w-4.5 h-4.5 text-orange-400" />
+          <span>Artilharia</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('players')}
+          className={`px-5 py-3 text-sm font-bold tracking-wide uppercase flex items-center gap-2 border-b-2 transition-all ${
+            activeTab === 'players'
+              ? 'text-emerald-400 border-emerald-400 bg-emerald-500/5'
+              : 'text-zinc-400 border-transparent hover:text-white'
+          }`}
+        >
+          <Users className="w-4.5 h-4.5" />
+          <span>Jogadores / Elencos</span>
+        </button>
       </div>
 
       {/* TAB 1: STANDINGS TABLE */}
@@ -676,6 +759,38 @@ export default function LeagueTournament({
                     key={match.id}
                     className="bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700/60 p-4 rounded-2xl shadow-md transition-all"
                   >
+                    {/* DATE & TIME CALENDAR HEADER */}
+                    <div className="flex flex-wrap justify-between items-center gap-2 mb-3 pb-2 border-b border-zinc-950/40 text-[11px] font-mono">
+                      <span className="text-emerald-400/90 font-bold uppercase tracking-wider">
+                        Jogo #{match.matchIndex + 1}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                        {isAdmin ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="date"
+                              value={match.date || ''}
+                              onChange={(e) => handleMatchDateChange(match.id, e.target.value)}
+                              className="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300 focus:outline-none focus:border-emerald-500 text-[10px] w-28 font-sans cursor-pointer"
+                            />
+                            <input
+                              type="time"
+                              value={match.time || ''}
+                              onChange={(e) => handleMatchTimeChange(match.id, e.target.value)}
+                              className="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-300 focus:outline-none focus:border-emerald-500 text-[10px] w-16 font-sans cursor-pointer"
+                            />
+                          </div>
+                        ) : match.date ? (
+                          <span className="text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg text-[10px]">
+                            {formatDate(match.date)} {match.time ? `às ${match.time}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-zinc-500">Agendado</span>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-12 gap-2 items-center">
                       
                       {/* HOME TEAM SLOT (DROP ZONE IF UNPLAYED & ADMIN) */}
@@ -703,21 +818,35 @@ export default function LeagueTournament({
 
                       {/* SCOREBOARD FORM */}
                       <div className="col-span-4 flex items-center justify-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="-"
-                          value={edit.home}
-                          onChange={(e) => handleScoreChange(match.id, 'home', e.target.value)}
-                          className="w-11 h-11 text-center bg-zinc-950 border border-zinc-800 rounded-lg text-white font-black text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                        />
-                        <span className="text-zinc-600 font-bold text-xs">x</span>
-                        <input
-                          type="text"
-                          placeholder="-"
-                          value={edit.away}
-                          onChange={(e) => handleScoreChange(match.id, 'away', e.target.value)}
-                          className="w-11 h-11 text-center bg-zinc-950 border border-zinc-800 rounded-lg text-white font-black text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                        />
+                        {isAdmin ? (
+                          <>
+                            <input
+                              type="text"
+                              placeholder="-"
+                              value={edit.home}
+                              onChange={(e) => handleScoreChange(match.id, 'home', e.target.value)}
+                              className="w-11 h-11 text-center bg-zinc-950 border border-zinc-800 rounded-lg text-white font-black text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                            />
+                            <span className="text-zinc-600 font-bold text-xs">x</span>
+                            <input
+                              type="text"
+                              placeholder="-"
+                              value={edit.away}
+                              onChange={(e) => handleScoreChange(match.id, 'away', e.target.value)}
+                              className="w-11 h-11 text-center bg-zinc-950 border border-zinc-800 rounded-lg text-white font-black text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-3 bg-zinc-950/60 px-4 py-2 rounded-xl border border-zinc-800/50">
+                            <span className={`text-xl font-black font-mono ${match.played ? 'text-white' : 'text-zinc-600'}`}>
+                              {match.homeScore !== null ? match.homeScore : '-'}
+                            </span>
+                            <span className="text-zinc-600 font-bold text-xs">x</span>
+                            <span className={`text-xl font-black font-mono ${match.played ? 'text-white' : 'text-zinc-600'}`}>
+                              {match.awayScore !== null ? match.awayScore : '-'}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* AWAY TEAM SLOT (DROP ZONE IF UNPLAYED & ADMIN) */}
@@ -811,7 +940,172 @@ export default function LeagueTournament({
         </div>
       )}
 
-      {isAdmin && activeTab === 'players' && (
+      {/* TAB 4: TOP SCORERS */}
+      {activeTab === 'scorers' && (
+        <div className="space-y-6 max-w-4xl mx-auto">
+          {scorersList.length === 0 || scorersList.every(s => s.goals === 0) ? (
+            <div className="text-center py-16 px-4 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-xl">
+              <div className="w-16 h-16 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mx-auto mb-4 animate-bounce">
+                <Flame className="w-8 h-8 text-orange-400" />
+              </div>
+              <h3 className="text-lg font-black text-white uppercase tracking-wider">A artilharia ainda não começou!</h3>
+              <p className="text-sm text-zinc-400 mt-2 max-w-md mx-auto">
+                Nenhum atleta balançou as redes adversárias ainda neste campeonato.
+              </p>
+              <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+                Administradores podem lançar os gols dos atletas na aba de <strong>Jogadores / Elencos</strong> selecionando a equipe correspondente.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* PODIUM OF TOP 3 SCORERS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end pt-6">
+                {/* 2nd Place */}
+                {scorersList[1] && scorersList[1].goals > 0 ? (
+                  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col items-center text-center relative order-2 md:order-1 hover:border-zinc-700/50 transition-all">
+                    <div className="absolute top-4 left-4 text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-750">
+                      2º Lugar
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-zinc-400 flex items-center justify-center font-bold text-lg text-zinc-300 shadow-inner mb-3 mt-4">
+                      🥈
+                    </div>
+                    <h4 className="font-black text-white text-base truncate max-w-full" title={scorersList[1].name}>
+                      {scorersList[1].name}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${scorersList[1].teamColor}`} />
+                      <span className="text-xs text-zinc-400 font-bold">{scorersList[1].teamName}</span>
+                    </div>
+                    <div className="mt-4 bg-zinc-850 px-4 py-2 rounded-xl border border-zinc-800">
+                      <span className="text-2xl font-black text-zinc-300 font-mono">{scorersList[1].goals}</span>
+                      <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider ml-1">Gols</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-zinc-900/40 border border-dashed border-zinc-850 p-5 rounded-2xl h-44 flex items-center justify-center text-zinc-600 font-mono text-xs uppercase order-2 md:order-1">
+                    Vago
+                  </div>
+                )}
+
+                {/* 1st Place */}
+                {scorersList[0] && scorersList[0].goals > 0 ? (
+                  <div className="bg-gradient-to-b from-amber-500/10 to-zinc-900 border-2 border-amber-500/30 p-6 rounded-3xl flex flex-col items-center text-center relative order-1 md:order-2 shadow-xl hover:border-amber-500/50 transition-all transform md:-translate-y-2">
+                    <div className="absolute top-4 text-amber-400 text-[10px] font-mono font-bold uppercase tracking-widest bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30 animate-pulse">
+                      Artilheiro
+                    </div>
+                    <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center font-bold text-2xl text-amber-300 shadow-lg mb-3 mt-5">
+                      👑
+                    </div>
+                    <h4 className="font-black text-white text-lg truncate max-w-full" title={scorersList[0].name}>
+                      {scorersList[0].name}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${scorersList[0].teamColor}`} />
+                      <span className="text-xs text-amber-300 font-black">{scorersList[0].teamName}</span>
+                    </div>
+                    <div className="mt-4 bg-amber-500/10 px-6 py-2.5 rounded-xl border border-amber-500/20 shadow-md">
+                      <span className="text-3xl font-black text-amber-400 font-mono">{scorersList[0].goals}</span>
+                      <span className="text-xs text-amber-300/80 font-mono uppercase tracking-wider ml-1">Gols</span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* 3rd Place */}
+                {scorersList[2] && scorersList[2].goals > 0 ? (
+                  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col items-center text-center relative order-3 hover:border-zinc-700/50 transition-all">
+                    <div className="absolute top-4 left-4 text-zinc-400 text-xs font-mono font-bold uppercase tracking-wider bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-750">
+                      3º Lugar
+                    </div>
+                    <div className="w-12 h-12 rounded-full bg-zinc-800 border-2 border-amber-600/50 flex items-center justify-center font-bold text-lg text-amber-600 shadow-inner mb-3 mt-4">
+                      🥉
+                    </div>
+                    <h4 className="font-black text-white text-base truncate max-w-full" title={scorersList[2].name}>
+                      {scorersList[2].name}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-2.5 h-2.5 rounded-full ${scorersList[2].teamColor}`} />
+                      <span className="text-xs text-zinc-400 font-bold">{scorersList[2].teamName}</span>
+                    </div>
+                    <div className="mt-4 bg-zinc-850 px-4 py-2 rounded-xl border border-zinc-800">
+                      <span className="text-2xl font-black text-amber-600/90 font-mono">{scorersList[2].goals}</span>
+                      <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider ml-1">Gols</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-zinc-900/40 border border-dashed border-zinc-850 p-5 rounded-2xl h-44 flex items-center justify-center text-zinc-600 font-mono text-xs uppercase order-3">
+                    Vago
+                  </div>
+                )}
+              </div>
+
+              {/* COMPLETE STANDINGS TABLE */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-lg">
+                <div className="px-5 py-4 bg-zinc-950 border-b border-zinc-850 flex items-center gap-2">
+                  <Flame className="w-4.5 h-4.5 text-orange-400" />
+                  <h3 className="text-xs font-mono font-bold uppercase tracking-widest text-zinc-400">Classificação Geral de Artilharia</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[500px]">
+                    <thead>
+                      <tr className="bg-zinc-950/60 text-[10px] font-mono tracking-wider text-zinc-500 uppercase border-b border-zinc-850">
+                        <th className="py-3 px-5 text-center w-16">Pos</th>
+                        <th className="py-3 px-4">Jogador</th>
+                        <th className="py-3 px-4">Equipe</th>
+                        <th className="py-3 px-4 text-center w-24">Cartões (Am/Vm)</th>
+                        <th className="py-3 px-6 text-right w-32">Gols Registrados</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-850 text-sm">
+                      {scorersList.filter(p => p.goals > 0).map((player, index) => {
+                        let rankBadge = `${index + 1}º`;
+                        if (index === 0) rankBadge = '👑 1º';
+                        else if (index === 1) rankBadge = '🥈 2º';
+                        else if (index === 2) rankBadge = '🥉 3º';
+
+                        return (
+                          <tr key={player.id} className="hover:bg-zinc-850/20 transition-colors">
+                            <td className="py-3 px-5 text-center font-mono font-bold text-zinc-400">
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs ${index < 3 ? 'text-amber-400 font-black' : 'text-zinc-500'}`}>
+                                {rankBadge}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-bold text-white">
+                              {player.name}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className={`w-3 h-3 rounded-full ${player.teamColor}`} />
+                                <span className="text-zinc-300 font-medium">{player.teamName}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-mono text-xs">
+                                <span className="text-yellow-400 font-bold bg-yellow-400/5 border border-yellow-400/10 px-1 py-0.5 rounded">
+                                  {player.yellowCards + player.doubleYellows * 2}🟨
+                                </span>
+                                <span className="text-red-500 font-bold bg-red-500/5 border border-red-500/10 px-1 py-0.5 rounded">
+                                  {player.redCards + player.doubleYellows}🟥
+                                </span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-6 text-right">
+                              <span className="text-lg font-black text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl shadow-inner">
+                                {player.goals} Gols
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'players' && (
         <TeamRosterManager
           tournament={tournament}
           isAdmin={isAdmin}

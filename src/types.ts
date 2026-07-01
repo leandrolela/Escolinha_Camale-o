@@ -5,6 +5,10 @@ export interface Player {
   name: string;
   rg: string;
   birthDate: string;
+  yellowCards?: number;   // Accumulated single yellow cards
+  redCards?: number;      // Direct red cards
+  doubleYellows?: number; // Two yellow cards in the same match
+  goals?: number;         // Goals scored by the player
 }
 
 export interface Team {
@@ -27,6 +31,8 @@ export interface Match {
   penaltiesAway?: number | null;
   phase?: 'group' | 'semifinal' | 'final'; // Optional: for group stage + knockout tournaments
   group?: 'A' | 'B';                       // Optional: Group A or Group B
+  date?: string;                           // Optional: game date (YYYY-MM-DD)
+  time?: string;                           // Optional: game time (HH:MM)
 }
 
 export interface Tournament {

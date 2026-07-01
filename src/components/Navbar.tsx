@@ -61,8 +61,8 @@ export default function Navbar({
           >
             <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-emerald-500/30 overflow-hidden shadow-md shadow-emerald-500/10 group-hover:scale-105 transition-all duration-300 flex items-center justify-center">
               <img 
-                src="Escolinha_Camale-o/src/assets/images/Logo.png" 
-                alt=" Logo Camaleão"   
+                src="/src/assets/images/chameleon_logo_1782871892093.jpg" 
+                alt="Logo" 
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />

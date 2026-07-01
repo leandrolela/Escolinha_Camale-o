@@ -109,6 +109,73 @@ export default function TeamRosterManager({
     });
   };
 
+  const handleUpdateCards = (playerId: string, cardType: 'yellowCards' | 'redCards' | 'doubleYellows', increment: boolean) => {
+    onRequestAdmin(() => {
+      const updatedTeams = tournament.teams.map(t => {
+        if (t.id === selectedTeam.id) {
+          return {
+            ...t,
+            players: (t.players || []).map(p => {
+              if (p.id === playerId) {
+                const currentVal = p[cardType] || 0;
+                const newVal = increment ? currentVal + 1 : Math.max(0, currentVal - 1);
+                return {
+                  ...p,
+                  [cardType]: newVal
+                };
+              }
+              return p;
+            })
+          };
+        }
+        return t;
+      });
+      onUpdateTeams(updatedTeams);
+    });
+  };
+
+  const handleUpdateGoals = (playerId: string, increment: boolean) => {
+    onRequestAdmin(() => {
+      const updatedTeams = tournament.teams.map(t => {
+        if (t.id === selectedTeam.id) {
+          return {
+            ...t,
+            players: (t.players || []).map(p => {
+              if (p.id === playerId) {
+                const currentVal = p.goals || 0;
+                const newVal = increment ? currentVal + 1 : Math.max(0, currentVal - 1);
+                return {
+                  ...p,
+                  goals: newVal
+                };
+              }
+              return p;
+            })
+          };
+        }
+        return t;
+      });
+      onUpdateTeams(updatedTeams);
+    });
+  };
+
+  const getSuspensionStatus = (p: Player) => {
+    const yellows = p.yellowCards || 0;
+    const reds = p.redCards || 0;
+    const doubleYs = p.doubleYellows || 0;
+
+    if (reds >= 1) {
+      return { isSuspended: true, label: 'Suspenso 🟥', reason: 'Vermelho Direto' };
+    }
+    if (doubleYs >= 1) {
+      return { isSuspended: true, label: 'Suspenso 🟨🟨', reason: '2 Amarelos na mesma partida' };
+    }
+    if (yellows >= 3) {
+      return { isSuspended: true, label: 'Suspenso 🟨🟨🟨', reason: 'Acúmulo de 3 Amarelos' };
+    }
+    return { isSuspended: false, label: 'Regularizado ✔️', reason: 'Elegível para jogo' };
+  };
+
   return (
     <div className="space-y-6">
       {!selectedTeamId ? (
@@ -207,11 +274,11 @@ export default function TeamRosterManager({
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* LEFT COLUMN: CURRENT PLAYERS LIST */}
-            <div className="lg:col-span-7 bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
+            <div className="lg:col-span-8 bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4 overflow-hidden">
               <div className="flex justify-between items-center pb-3 border-b border-zinc-800/60">
                 <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                   <Users className="w-4 h-4 text-emerald-400" />
-                  <span>Jogadores Inscritos</span>
+                  <span>Jogadores Inscritos & Cartões</span>
                 </h3>
                 <span className="text-xs font-mono font-bold text-zinc-500">
                   {currentPlayers.length} Inscritos
@@ -230,47 +297,211 @@ export default function TeamRosterManager({
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[320px]">
+                  <table className="w-full text-left border-collapse min-w-[750px]">
                     <thead>
                       <tr className="border-b border-zinc-850 text-[10px] font-mono tracking-wider text-zinc-500 uppercase">
-                        <th className="py-2 pb-3">Atleta</th>
-                        <th className="py-2 pb-3">RG</th>
-                        <th className="py-2 pb-3 text-center">Nascimento</th>
+                        <th className="py-2 pb-3 pr-2">Atleta</th>
+                        <th className="py-2 pb-3 px-2">RG</th>
+                        <th className="py-2 pb-3 px-2 text-center">Nascimento</th>
+                        <th className="py-2 pb-3 px-2 text-center w-28">Gols ⚽</th>
+                        <th className="py-2 pb-3 px-2 text-center w-28">Amarelos</th>
+                        <th className="py-2 pb-3 px-2 text-center w-28">2 Amarelos (Jogo)</th>
+                        <th className="py-2 pb-3 px-2 text-center w-28">Vermelhos</th>
+                        <th className="py-2 pb-3 px-2 text-center">Status / Suspensão</th>
                         {isAdmin && <th className="py-2 pb-3 text-right">Ação</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-850 text-sm">
-                      {currentPlayers.map((player) => (
-                        <tr key={player.id} className="hover:bg-zinc-850/20 transition-colors">
-                          <td className="py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs uppercase text-zinc-300">
-                                {player.name.substring(0, 2)}
+                      {currentPlayers.map((player) => {
+                        const status = getSuspensionStatus(player);
+                        return (
+                          <tr key={player.id} className="hover:bg-zinc-850/20 transition-colors">
+                            {/* Player Name */}
+                            <td className="py-3 pr-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs uppercase text-zinc-300 shrink-0">
+                                  {player.name.substring(0, 2)}
+                                </div>
+                                <span className="font-semibold text-white truncate max-w-[130px]" title={player.name}>
+                                  {player.name}
+                                </span>
                               </div>
-                              <span className="font-semibold text-white truncate max-w-[120px] sm:max-w-[200px]" title={player.name}>
-                                {player.name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 font-mono text-xs text-zinc-400">
-                            {player.rg}
-                          </td>
-                          <td className="py-3 text-center font-mono text-xs text-zinc-400">
-                            {player.birthDate ? new Date(player.birthDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                          </td>
-                          {isAdmin && (
-                            <td className="py-3 text-right">
-                              <button
-                                onClick={() => handleDeletePlayer(player.id, player.name)}
-                                className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-all"
-                                title="Remover Jogador"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
                             </td>
-                          )}
-                        </tr>
-                      ))}
+
+                            {/* RG - Protected by LGPD */}
+                            <td className="py-3 px-2 font-mono text-xs text-zinc-400">
+                              {isAdmin ? (
+                                player.rg
+                              ) : (
+                                <span className="text-zinc-600 italic text-[11px]" title="Ocultado por conformidade com a LGPD">Protegido (LGPD)</span>
+                              )}
+                            </td>
+
+                            {/* DOB - Protected by LGPD */}
+                            <td className="py-3 px-2 text-center font-mono text-xs text-zinc-400">
+                              {isAdmin ? (
+                                player.birthDate ? new Date(player.birthDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'
+                              ) : (
+                                <span className="text-zinc-600 italic text-[11px]" title="Ocultado por conformidade com a LGPD">Protegido (LGPD)</span>
+                              )}
+                            </td>
+
+                            {/* Goals Scored */}
+                            <td className="py-3 px-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {isAdmin ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateGoals(player.id, false)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-zinc-750 text-zinc-400 hover:text-white rounded flex items-center justify-center text-xs font-bold transition-all"
+                                      title="Subtrair Gol"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="w-7 text-center font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 py-0.5 rounded text-xs">
+                                      {player.goals || 0}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateGoals(player.id, true)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-emerald-500 hover:text-zinc-950 text-zinc-400 rounded flex items-center justify-center text-xs font-bold transition-all"
+                                      title="Lançar Gol"
+                                    >
+                                      +
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="w-7 text-center font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 py-0.5 px-1.5 rounded text-xs">
+                                    {player.goals || 0}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Yellow Cards Accumulator */}
+                            <td className="py-3 px-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {isAdmin ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCards(player.id, 'yellowCards', false)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-zinc-750 text-zinc-400 hover:text-white rounded flex items-center justify-center text-xs font-bold transition-all"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="w-7 text-center font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 py-0.5 rounded text-xs">
+                                      {player.yellowCards || 0}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCards(player.id, 'yellowCards', true)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-yellow-500 hover:text-zinc-950 text-zinc-400 rounded flex items-center justify-center text-xs font-bold transition-all"
+                                    >
+                                      +
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="w-7 text-center font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 py-0.5 px-1.5 rounded text-xs">
+                                    {player.yellowCards || 0}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Double Yellow (same game) Accumulator */}
+                            <td className="py-3 px-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {isAdmin ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCards(player.id, 'doubleYellows', false)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-zinc-750 text-zinc-400 hover:text-white rounded flex items-center justify-center text-xs font-bold transition-all"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="w-7 text-center font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 py-0.5 rounded text-xs">
+                                      {player.doubleYellows || 0}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCards(player.id, 'doubleYellows', true)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-orange-500 hover:text-zinc-950 text-zinc-400 rounded flex items-center justify-center text-xs font-bold transition-all"
+                                    >
+                                      +
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="w-7 text-center font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 py-0.5 px-1.5 rounded text-xs">
+                                    {player.doubleYellows || 0}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Red Cards Accumulator */}
+                            <td className="py-3 px-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {isAdmin ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCards(player.id, 'redCards', false)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-zinc-750 text-zinc-400 hover:text-white rounded flex items-center justify-center text-xs font-bold transition-all"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="w-7 text-center font-bold text-red-500 bg-red-500/10 border border-red-500/20 py-0.5 rounded text-xs">
+                                      {player.redCards || 0}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCards(player.id, 'redCards', true)}
+                                      className="w-5 h-5 bg-zinc-800 hover:bg-red-500 hover:text-zinc-950 text-zinc-400 rounded flex items-center justify-center text-xs font-bold transition-all"
+                                    >
+                                      +
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="w-7 text-center font-bold text-red-500 bg-red-500/10 border border-red-500/20 py-0.5 px-1.5 rounded text-xs">
+                                    {player.redCards || 0}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Active Suspension Status & Reason */}
+                            <td className="py-3 px-2 text-center">
+                              <span
+                                className={`inline-block text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full ${
+                                  status.isSuspended
+                                    ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                }`}
+                                title={status.reason || 'Jogador regularizado'}
+                              >
+                                {status.label}
+                              </span>
+                            </td>
+
+                            {/* Delete Action (Admin-only) */}
+                            {isAdmin && (
+                              <td className="py-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePlayer(player.id, player.name)}
+                                  className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-all"
+                                  title="Remover Jogador"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -278,7 +509,7 @@ export default function TeamRosterManager({
             </div>
 
             {/* RIGHT COLUMN: REGISTER NEW PLAYER FORM */}
-            <div className="lg:col-span-5 space-y-4">
+            <div className="lg:col-span-4 space-y-4">
               {isAdmin ? (
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
                   <div>
